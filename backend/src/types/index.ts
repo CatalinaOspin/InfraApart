@@ -29,6 +29,26 @@ export enum DamageCategory {
   OTHER = 'other',
 }
 
+/** Tipos de daño controlados en reports.damage_type */
+export enum DamageType {
+  POTHOLE = 'pothole',
+  CRACK = 'crack',
+  FLOODING = 'flooding',
+  SIDEWALK = 'sidewalk',
+  SIGNAGE = 'signage',
+  LIGHTING = 'lighting',
+  DRAINAGE = 'drainage',
+  OTHER = 'other',
+}
+
+/** Nivel de severidad de un daño (reports.severity_level) */
+export enum SeverityLevel {
+  LOW = 'low',
+  MEDIUM = 'medium',
+  HIGH = 'high',
+  CRITICAL = 'critical',
+}
+
 /** Estructura base de respuesta API */
 export interface ApiResponse<T = unknown> {
   success: boolean;

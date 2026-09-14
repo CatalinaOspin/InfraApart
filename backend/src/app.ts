@@ -3,6 +3,7 @@ import cors from 'cors';
 import helmet from 'helmet';
 import morgan from 'morgan';
 import dotenv from 'dotenv';
+import prisma from './config/database';
 
 // Cargar variables de entorno
 dotenv.config();
@@ -30,13 +31,26 @@ app.use(express.urlencoded({ extended: true }));
 // app.use('/api/categories', categoryRoutes);
 // app.use('/api/stats', statsRoutes);
 
-// Ruta de health check
-app.get('/api/health', (_req, res) => {
-  res.json({
-    status: 'ok',
-    message: 'InfraApart API funcionando correctamente',
-    timestamp: new Date().toISOString(),
-  });
+// Ruta de health check: verifica el estado real de la base de datos
+app.get('/api/health', async (_req, res) => {
+  try {
+    // Consulta ligera contra PostgreSQL (handshake real)
+    await prisma.$queryRaw`SELECT 1`;
+    res.status(200).json({
+      status: 'ok',
+      db: 'connected',
+      message: 'InfraApart API funcionando correctamente',
+      timestamp: new Date().toISOString(),
+    });
+  } catch (error) {
+    console.error('Health check - BD no disponible:', (error as Error).message);
+    res.status(503).json({
+      status: 'degraded',
+      db: 'disconnected',
+      message: 'InfraApart API activa pero sin conexión a la base de datos',
+      timestamp: new Date().toISOString(),
+    });
+  }
 });
 
 // ============================================

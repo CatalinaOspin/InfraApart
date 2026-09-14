@@ -10,9 +10,10 @@ export const config = {
   db: {
     host: process.env.DB_HOST || 'localhost',
     port: parseInt(process.env.DB_PORT || '5432', 10),
-    name: process.env.DB_NAME || 'infraapart',
-    user: process.env.DB_USER || 'postgres',
-    password: process.env.DB_PASSWORD || '',
+    name: process.env.DB_NAME || 'infraapart_db',
+    user: process.env.DB_USER || 'infraapart_user',
+    password: process.env.DB_PASSWORD || 'infraapart_password',
+    databaseUrl: process.env.DATABASE_URL || '',
   },
 
   jwt: {

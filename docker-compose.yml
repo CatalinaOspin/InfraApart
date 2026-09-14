@@ -1,0 +1,43 @@
+# ============================================================
+# InfraApart - Docker Compose
+# Base de datos PostgreSQL + PostGIS
+# ============================================================
+#
+# Uso:
+#   docker compose up -d        # Levantar la base de datos
+#   docker compose down         # Detener (sin borrar datos)
+#   docker compose down -v      # Detener y borrar el volumen de datos
+#
+# Al primer arranque, el contenedor ejecuta automáticamente
+# docs/database_schema.sql (montado en /docker-entrypoint-initdb.d/)
+# creando la BD con extensión PostGIS, tablas, datos iniciales e índices.
+
+services:
+  db:
+    image: postgis/postgis:15-3.3
+    container_name: infraapart_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: infraapart_db
+      POSTGRES_USER: infraapart_user
+      POSTGRES_PASSWORD: infraapart_password
+      # Zona horaria (opcional)
+      TZ: America/Bogota
+      PGTZ: America/Bogota
+    ports:
+      - "5432:5432"
+    volumes:
+      # Volumen persistente: los datos sobreviven a docker compose down
+      - postgres_data:/var/lib/postgresql/data
+      # Ejecución automática del esquema al inicializar el contenedor
+      - ./docs/database_schema.sql:/docker-entrypoint-initdb.d/001_database_schema.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U infraapart_user -d infraapart_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+volumes:
+  postgres_data:
+    name: infraapart_postgres_data

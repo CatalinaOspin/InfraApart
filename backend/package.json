@@ -8,7 +8,17 @@
     "build": "tsc",
     "start": "node dist/server.js",
     "lint": "eslint src/ --ext .ts",
-    "lint:fix": "eslint src/ --ext .ts --fix"
+    "lint:fix": "eslint src/ --ext .ts --fix",
+    "prisma:generate": "prisma generate",
+    "prisma:validate": "prisma validate",
+    "prisma:push": "prisma db push",
+    "prisma:pull": "prisma db pull",
+    "prisma:postgis": "prisma db execute --schema prisma/schema.prisma --file prisma/postgis-supabase.sql",
+    "prisma:studio": "prisma studio",
+    "db:up": "docker compose -f ../docker-compose.yml up -d",
+    "db:down": "docker compose -f ../docker-compose.yml down",
+    "db:logs": "docker compose -f ../docker-compose.yml logs -f db",
+    "db:test": "ts-node --transpile-only src/scripts/test-db.ts"
   },
   "keywords": [
     "infraapart",
@@ -19,6 +29,7 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@prisma/client": "^6.19.3",
     "cors": "^2.8.5",
     "dotenv": "^16.3.1",
     "express": "^4.18.2",
@@ -31,6 +42,7 @@
     "@types/morgan": "^1.9.9",
     "@types/node": "^20.10.0",
     "eslint": "^8.54.0",
+    "prisma": "^6.19.3",
     "ts-node-dev": "^2.0.0",
     "typescript": "^5.3.2"
   }
