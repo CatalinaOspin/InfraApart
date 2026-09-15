@@ -1,0 +1,15 @@
+{
+  "name": "infraapart",
+  "version": "1.0.0",
+  "private": true,
+  "description": "InfraApart - raíz del monorepo. Un solo comando para levantar Backend (3001) y Frontend (5173) en paralelo.",
+  "license": "UNLICENSED",
+  "scripts": {
+    "dev:backend": "cd backend && npm run dev",
+    "dev:frontend": "cd frontend && npm run dev",
+    "dev": "concurrently --kill-others-on-fail -n \"BACKEND,FRONTEND\" -c \"cyan,magenta\" \"npm run dev:backend\" \"npm run dev:frontend\""
+  },
+  "devDependencies": {
+    "concurrently": "^10.0.5"
+  }
+}

@@ -1,5 +1,6 @@
 import dotenv from 'dotenv';
 import path from 'path';
+import type { SignOptions } from 'jsonwebtoken';
 
 dotenv.config();
 
@@ -18,7 +19,9 @@ export const config = {
 
   jwt: {
     secret: process.env.JWT_SECRET || 'default_secret_change_me',
-    expiresIn: process.env.JWT_EXPIRES_IN || '24h',
+    // @types/jsonwebtoken v9 exige StringValue (p. ej. '24h'); `as` es de
+    // compilación: el valor real se lee del .env en runtime.
+    expiresIn: (process.env.JWT_EXPIRES_IN || '24h') as SignOptions['expiresIn'],
   },
 
   cors: {

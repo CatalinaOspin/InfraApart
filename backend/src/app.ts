@@ -4,6 +4,8 @@ import helmet from 'helmet';
 import morgan from 'morgan';
 import dotenv from 'dotenv';
 import prisma from './config/database';
+import authRoutes from './routes/authRoutes';
+import reportRoutes from './routes/reportRoutes';
 
 // Cargar variables de entorno
 dotenv.config();
@@ -25,9 +27,9 @@ app.use(express.urlencoded({ extended: true }));
 // ============================================
 // Rutas de la API
 // ============================================
-// app.use('/api/auth', authRoutes);
+app.use('/api/auth', authRoutes);
 // app.use('/api/users', userRoutes);
-// app.use('/api/reports', reportRoutes);
+app.use('/api/reports', reportRoutes);
 // app.use('/api/categories', categoryRoutes);
 // app.use('/api/stats', statsRoutes);
 
