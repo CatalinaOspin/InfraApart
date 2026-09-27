@@ -1,6 +1,6 @@
 # ============================================================
 # InfraApart - Docker Compose
-# Base de datos PostgreSQL + PostGIS
+# Base de datos PostgreSQL + PostGIS Local
 # ============================================================
 #
 # Uso:
@@ -14,13 +14,13 @@
 
 services:
   db:
-    image: postgis/postgis:15-3.3
+    image: postgis/postgis:15-3.3-alpine
     container_name: infraapart_db
     restart: unless-stopped
     environment:
       POSTGRES_DB: infraapart_db
-      POSTGRES_USER: infraapart_user
-      POSTGRES_PASSWORD: infraapart_password
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
       # Zona horaria (opcional)
       TZ: America/Bogota
       PGTZ: America/Bogota
@@ -32,7 +32,7 @@ services:
       # Ejecución automática del esquema al inicializar el contenedor
       - ./docs/database_schema.sql:/docker-entrypoint-initdb.d/001_database_schema.sql:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U infraapart_user -d infraapart_db"]
+      test: ["CMD-SHELL", "pg_isready -U postgres -d infraapart_db"]
       interval: 5s
       timeout: 5s
       retries: 10
