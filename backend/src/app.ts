@@ -4,6 +4,7 @@ import helmet from 'helmet';
 import morgan from 'morgan';
 import dotenv from 'dotenv';
 import prisma from './config/database';
+import { useInMemory } from './config/inMemoryDb';
 import authRoutes from './routes/authRoutes';
 import reportRoutes from './routes/reportRoutes';
 
@@ -35,6 +36,17 @@ app.use('/api/reports', reportRoutes);
 
 // Ruta de health check: verifica el estado real de la base de datos
 app.get('/api/health', async (_req, res) => {
+  // Si estamos en modo in-memory, reportar ese estado
+  if (useInMemory) {
+    res.status(200).json({
+      status: 'ok',
+      db: 'in-memory',
+      message: 'InfraApart API funcionando en modo LOCAL (datos en memoria, no persisten)',
+      timestamp: new Date().toISOString(),
+    });
+    return;
+  }
+
   try {
     // Consulta ligera contra PostgreSQL (handshake real)
     await prisma.$queryRaw`SELECT 1`;

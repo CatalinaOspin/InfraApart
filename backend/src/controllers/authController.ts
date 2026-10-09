@@ -6,6 +6,12 @@ import prisma from '../config/database';
 import { config } from '../config/env';
 import { sendError, sendSuccess } from '../utils/responses';
 import { loginSchema, registerSchema } from '../utils/validators';
+import {
+  useInMemory,
+  findUserByEmail,
+  findUserById,
+  createUser as createInMemoryUser,
+} from '../config/inMemoryDb';
 import '../types/express';
 
 /** Rondas de salt para bcryptjs (estándar OWASP: ≥ 10). */
@@ -61,14 +67,37 @@ export const register = async (req: Request, res: Response) => {
     }
 
     const { full_name, email, password, phone } = result.data;
+    const passwordHash = await bcrypt.hash(password, BCRYPT_SALT_ROUNDS);
+
+    // ------------------------------------------------------------------
+    // Modo en memoria (sin PostgreSQL)
+    // ------------------------------------------------------------------
+    if (useInMemory) {
+      const existingUser = findUserByEmail(email);
+      if (existingUser) {
+        return sendError(res, 'El correo electrónico ya está registrado', 409);
+      }
+
+      const createdUser = createInMemoryUser({
+        fullName: full_name,
+        email,
+        passwordHash,
+        role: 'citizen',
+        phone: phone ?? null,
+      });
+
+      return sendSuccess(res, { user: toSafeUser(createdUser) }, 'Usuario registrado correctamente', 201);
+    }
+
+    // ------------------------------------------------------------------
+    // Modo normal (PostgreSQL vía Prisma)
+    // ------------------------------------------------------------------
 
     // Email único: verificación previa para no exponer el "porqué" técnico
     const existingUser = await prisma.user.findUnique({ where: { email } });
     if (existingUser) {
       return sendError(res, 'El correo electrónico ya está registrado', 409);
     }
-
-    const passwordHash = await bcrypt.hash(password, BCRYPT_SALT_ROUNDS);
 
     const createdUser = await prisma.user.create({
       data: {
@@ -107,6 +136,41 @@ export const login = async (req: Request, res: Response) => {
 
     const { email, password } = result.data;
 
+    // ------------------------------------------------------------------
+    // Modo en memoria (sin PostgreSQL)
+    // ------------------------------------------------------------------
+    if (useInMemory) {
+      const memUser = findUserByEmail(email);
+
+      if (!memUser) {
+        return sendError(res, 'Credenciales inválidas', 401);
+      }
+
+      const passwordValid = await bcrypt.compare(password, memUser.passwordHash);
+      if (!passwordValid) {
+        return sendError(res, 'Credenciales inválidas', 401);
+      }
+
+      if (!memUser.isActive) {
+        return sendError(res, 'La cuenta está desactivada', 401);
+      }
+
+      const token = jwt.sign(
+        { id: memUser.id, role: memUser.role },
+        config.jwt.secret,
+        { expiresIn: config.jwt.expiresIn }
+      );
+
+      return sendSuccess(
+        res,
+        { token, user: toSafeUser(memUser) },
+        'Inicio de sesión exitoso'
+      );
+    }
+
+    // ------------------------------------------------------------------
+    // Modo normal (PostgreSQL vía Prisma)
+    // ------------------------------------------------------------------
     const user = await prisma.user.findUnique({ where: { email } });
 
     // Mensaje genérico: no revelar si el email existe (anti-enumeración)
@@ -151,6 +215,20 @@ export const getProfile = async (req: Request, res: Response) => {
       return sendError(res, 'No autenticado', 401);
     }
 
+    // ------------------------------------------------------------------
+    // Modo en memoria (sin PostgreSQL)
+    // ------------------------------------------------------------------
+    if (useInMemory) {
+      const memUser = findUserById(req.user.id);
+      if (!memUser) {
+        return sendError(res, 'Usuario no encontrado', 404);
+      }
+      return sendSuccess(res, toSafeUser(memUser), 'Perfil obtenido correctamente');
+    }
+
+    // ------------------------------------------------------------------
+    // Modo normal (PostgreSQL vía Prisma)
+    // ------------------------------------------------------------------
     const user = await prisma.user.findUnique({ where: { id: req.user.id } });
     if (!user) {
       return sendError(res, 'Usuario no encontrado', 404);
