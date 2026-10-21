@@ -6,6 +6,7 @@ import Register from '../pages/Register';
 import ReportDamage from '../pages/ReportDamage';
 import MapView from '../pages/MapView';
 import Admin from '../pages/Admin';
+import Layout from '../components/common/Layout';
 import { useAuth } from '../context/AuthContext';
 
 interface ProtectedProps {
@@ -25,7 +26,7 @@ const ProtectedRoute: React.FC<ProtectedProps> = ({ children, adminOnly = false 
     return <div className="page-container muted">Cargando sesión…</div>;
   }
   if (!user) {
-    return <Navigate to="/login" state={{ from: location.pathname }} replace />;
+    return <Navigate to="/login" state={{ from: location.pathname + location.search }} replace />;
   }
   if (adminOnly && user.role !== 'admin') {
     return <Navigate to="/map" replace />;
@@ -38,44 +39,49 @@ const ProtectedRoute: React.FC<ProtectedProps> = ({ children, adminOnly = false 
  */
 const router = createBrowserRouter([
   {
-    path: '/',
-    element: <Home />,
-  },
-  {
-    path: '/login',
-    element: <Login />,
-  },
-  {
-    path: '/register',
-    element: <Register />,
-  },
-  {
-    path: '/report',
-    element: (
-      <ProtectedRoute>
-        <ReportDamage />
-      </ProtectedRoute>
-    ),
-  },
-  {
-    path: '/map',
-    element: (
-      <ProtectedRoute>
-        <MapView />
-      </ProtectedRoute>
-    ),
-  },
-  {
-    path: '/admin',
-    element: (
-      <ProtectedRoute adminOnly>
-        <Admin />
-      </ProtectedRoute>
-    ),
-  },
-  {
-    path: '*',
-    element: <Navigate to="/" replace />,
+    element: <Layout />,
+    children: [
+      {
+        path: '/',
+        element: <Home />,
+      },
+      {
+        path: '/login',
+        element: <Login />,
+      },
+      {
+        path: '/register',
+        element: <Register />,
+      },
+      {
+        path: '/report',
+        element: (
+          <ProtectedRoute>
+            <ReportDamage />
+          </ProtectedRoute>
+        ),
+      },
+      {
+        path: '/map',
+        element: (
+          <ProtectedRoute>
+            <MapView />
+          </ProtectedRoute>
+        ),
+      },
+      {
+        path: '/admin',
+        element: (
+          <ProtectedRoute adminOnly>
+            <Admin />
+          </ProtectedRoute>
+        ),
+      },
+      {
+        path: '*',
+        element: <Navigate to="/" replace />,
+      },
+    ],
   },
 ]);
 

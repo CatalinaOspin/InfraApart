@@ -1,5 +1,5 @@
 import React, { FormEvent, useEffect, useState } from 'react';
-import { Link, Navigate } from 'react-router-dom';
+import { Link, Navigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useGeolocation } from '../hooks/useGeolocation';
 import { createReport } from '../services/reports';
@@ -23,10 +23,15 @@ const APARTADO = { latitude: 7.8839, longitude: -76.6252 };
 const ReportDamage: React.FC = () => {
   const { user } = useAuth();
   const geo = useGeolocation();
+  const [searchParams] = useSearchParams();
+  // Tipo preseleccionado desde el acceso rápido de la portada (?tipo=pothole).
+  const initialType = searchParams.get('tipo') as DamageType | null;
 
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
-  const [damageType, setDamageType] = useState<DamageType>('pothole');
+  const [damageType, setDamageType] = useState<DamageType>(
+    initialType && DAMAGE_TYPES.includes(initialType) ? initialType : 'pothole'
+  );
   const [severity, setSeverity] = useState<SeverityLevel>('medium');
   const [locationAddress, setLocationAddress] = useState('');
   const [imageUrl, setImageUrl] = useState('');
