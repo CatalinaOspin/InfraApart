@@ -31,7 +31,7 @@ function toSafeUser(user: {
   fullName: string;
   email: string;
   phone: string | null;
-  role: string;
+  role: { name: string };
   isActive: boolean;
   createdAt: Date;
   updatedAt: Date;
@@ -41,7 +41,7 @@ function toSafeUser(user: {
     full_name: user.fullName,
     email: user.email,
     phone: user.phone,
-    role: user.role,
+    role: user.role.name,
     is_active: user.isActive,
     created_at: user.createdAt,
     updated_at: user.updatedAt,
@@ -75,9 +75,10 @@ export const register = async (req: Request, res: Response) => {
         fullName: full_name,
         email,
         passwordHash,
-        role: 'citizen', // bloqueo explícito de auto-asignación de roles
+        role: { connect: { name: 'citizen' } }, // bloqueo explícito de auto-asignación de roles
         phone: phone ?? null,
       },
+      include: { role: true },
     });
 
     return sendSuccess(res, { user: toSafeUser(createdUser) }, 'Usuario registrado correctamente', 201);
@@ -107,7 +108,7 @@ export const login = async (req: Request, res: Response) => {
 
     const { email, password } = result.data;
 
-    const user = await prisma.user.findUnique({ where: { email } });
+    const user = await prisma.user.findUnique({ where: { email }, include: { role: true } });
 
     // Mensaje genérico: no revelar si el email existe (anti-enumeración)
     if (!user) {
@@ -126,7 +127,7 @@ export const login = async (req: Request, res: Response) => {
     await prisma.user.update({ where: { id: user.id }, data: { lastLoginAt: new Date() } });
 
     const token = jwt.sign(
-      { id: user.id, role: user.role },
+      { id: user.id, role: user.role.name },
       config.jwt.secret,
       { expiresIn: config.jwt.expiresIn }
     );
@@ -153,7 +154,7 @@ export const getProfile = async (req: Request, res: Response) => {
       return sendError(res, 'No autenticado', 401);
     }
 
-    const user = await prisma.user.findUnique({ where: { id: req.user.id } });
+    const user = await prisma.user.findUnique({ where: { id: req.user.id }, include: { role: true } });
     if (!user) {
       return sendError(res, 'Usuario no encontrado', 404);
     }

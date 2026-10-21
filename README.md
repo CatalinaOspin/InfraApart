@@ -127,7 +127,8 @@ Después de crear la BD, regístrate desde la aplicación y cambia tu rol en el
 editor SQL de Neon (o en `psql`):
 
 ```sql
-UPDATE users SET role = 'admin' WHERE email = 'tu-correo@ejemplo.com';
+UPDATE users SET role_id = (SELECT id FROM roles WHERE name = 'admin')
+WHERE email = 'tu-correo@ejemplo.com';
 ```
 
 ### 5. Cambiar el modelo de datos
@@ -170,13 +171,14 @@ curl http://localhost:3001/api/health
 
 ## Modelo de datos
 
-13 tablas. Roles: `citizen` (ciudadano), `worker` (trabajador),
+14 tablas. Roles (tabla `roles`): `citizen` (ciudadano), `worker` (trabajador),
 `supervisor` (supervisor de área) y `admin` (administrador).
 
 | Tabla                | Para qué sirve |
 | -------------------- | -------------- |
+| `roles`              | Roles de usuario. El backend comprueba el rol por su `name`. |
 | `departments`        | Áreas responsables (Infraestructura vial, Alumbrado público, Drenaje…). |
-| `users`              | Usuarios. Trabajadores y supervisores pertenecen a un área (`department_id`). |
+| `users`              | Usuarios (`role_id` → `roles`). Trabajadores y supervisores pertenecen a un área (`department_id`). |
 | `user_tokens`        | Tokens temporales (hash) para recuperar contraseña y verificar correo. |
 | `categories`         | Tipos de daño (`name` = clave de la API: `pothole`, `crack`…) y el área a la que se envían. |
 | `report_statuses`    | Estados: Recibido → En revisión → En proceso → Resuelto / Rechazado. |

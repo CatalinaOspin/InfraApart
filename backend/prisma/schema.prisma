@@ -30,17 +30,6 @@ datasource db {
 // Enums
 // ============================================================
 
-/// Roles: el ciudadano reporta, el trabajador atiende lo asignado,
-/// el supervisor gestiona su área y el administrador gestiona todo.
-enum UserRole {
-  citizen
-  worker
-  supervisor
-  admin
-
-  @@map("user_role")
-}
-
 /// Severidad que indica el ciudadano al reportar.
 enum SeverityLevel {
   low
@@ -108,6 +97,26 @@ enum NotificationType {
 }
 
 // ============================================================
+// Roles
+// ============================================================
+
+/// Roles de usuario: citizen (ciudadano), worker (trabajador),
+/// supervisor (supervisor de área) y admin (administrador).
+/// El backend comprueba el rol por su `name`.
+model Role {
+  id          Int      @id @default(autoincrement())
+  name        String   @unique @db.VarChar(30)
+  label       String   @db.VarChar(80)
+  description String?  @db.Text
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  users User[]
+
+  @@map("roles")
+}
+
+// ============================================================
 // Usuarios y organización
 // ============================================================
 
@@ -133,7 +142,7 @@ model User {
   fullName        String    @map("full_name") @db.VarChar(150)
   email           String    @unique @db.VarChar(150)
   passwordHash    String    @map("password_hash") @db.VarChar(255)
-  role            UserRole  @default(citizen)
+  roleId          Int       @map("role_id")
   phone           String?   @db.VarChar(20)
   departmentId    Int?      @map("department_id")
   isActive        Boolean   @default(true) @map("is_active")
@@ -142,6 +151,7 @@ model User {
   createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt       DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 
+  role       Role        @relation(fields: [roleId], references: [id], onDelete: Restrict)
   department Department? @relation(fields: [departmentId], references: [id], onDelete: SetNull)
 
   reports             Report[]           @relation("ReportAuthor")
@@ -155,7 +165,7 @@ model User {
   notifications       Notification[]
   tokens              UserToken[]
 
-  @@index([role])
+  @@index([roleId])
   @@index([departmentId])
   @@index([isActive])
   @@map("users")
