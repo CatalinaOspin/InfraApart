@@ -12,7 +12,7 @@ export default defineConfig({
   engine: "classic",
   datasource: {
     url: env("DATABASE_URL"),
-    // Conexión directa (5432) para CLI: migrate / db push no pasan por PgBouncer.
+    // Conexión directa para el CLI: las migraciones no pasan por el pooler.
     directUrl: env("DIRECT_URL"),
   },
 });

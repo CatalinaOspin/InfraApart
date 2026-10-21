@@ -59,7 +59,7 @@ export type LoginInput = z.infer<typeof loginSchema>;
 //           reportStatusSchema → PATCH /api/reports/:id/status
 // ============================================
 
-/** Tipos de daño admitidos (espejo del enum damage_type de PostgreSQL). */
+/** Tipos de daño admitidos (nombres de las categorías sembradas en la BD). */
 const damageTypeSchema = z.enum(
   ['pothole', 'crack', 'flooding', 'sidewalk', 'signage', 'lighting', 'drainage', 'other'],
   'El tipo de daño no es válido'
@@ -70,6 +70,27 @@ const severityLevelSchema = z.enum(
   ['low', 'medium', 'high', 'critical'],
   'El nivel de severidad no es válido'
 );
+
+/** Origen de la ubicación (espejo del enum location_source). */
+const locationSourceSchema = z.enum(
+  ['gps', 'map_pin', 'manual'],
+  'El origen de la ubicación no es válido'
+);
+
+/** Datos complementarios de ubicación (barrio y punto de referencia). */
+const neighborhoodSchema = z
+  .string()
+  .trim()
+  .max(120, 'El barrio no puede superar los 120 caracteres')
+  .optional()
+  .nullable();
+
+const referencePointSchema = z
+  .string()
+  .trim()
+  .max(255, 'El punto de referencia no puede superar los 255 caracteres')
+  .optional()
+  .nullable();
 
 /** Coordenadas geográficas obligatorias y en rango válido. */
 const latitudeSchema = z
@@ -99,6 +120,9 @@ export const reportCreateSchema = z.object({
   severity_level: severityLevelSchema,
   latitude: latitudeSchema,
   longitude: longitudeSchema,
+  location_source: locationSourceSchema.optional(),
+  neighborhood: neighborhoodSchema,
+  reference_point: referencePointSchema,
   location_address: z
     .string()
     .trim()
@@ -132,6 +156,9 @@ export const reportUpdateSchema = z.object({
   severity_level: severityLevelSchema.optional(),
   latitude: latitudeSchema.optional(),
   longitude: longitudeSchema.optional(),
+  location_source: locationSourceSchema.optional(),
+  neighborhood: neighborhoodSchema,
+  reference_point: referencePointSchema,
   location_address: z
     .string()
     .trim()

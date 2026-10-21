@@ -1,8 +1,17 @@
 // ============================================================
 // Schema Prisma de InfraApart
-// Fuente de verdad del modelo: docs/database_schema.sql
-// Generar el cliente: npx prisma generate (dentro de backend/)
-// Sincronizar con la BD real: npx prisma db pull
+// Fuente de verdad del modelo de datos.
+//
+// Flujo de trabajo (dentro de backend/):
+//   - Cambiar el modelo:  editar este archivo y ejecutar
+//                         npm run prisma:migrate -- --name <cambio>
+//   - Crear/actualizar la BD (Neon, local, Render):
+//                         npm run prisma:deploy
+//   - Generar el cliente: npm run prisma:generate
+//
+// Lo que Prisma no expresa (PostGIS, columna generada `location`,
+// triggers, CHECKs y datos iniciales) vive en el SQL de la migración
+// inicial: prisma/migrations/20261020000000_init/migration.sql
 // ============================================================
 
 generator client {
@@ -11,94 +20,200 @@ generator client {
 
 datasource db {
   provider  = "postgresql"
-  // Transaction Pooler (PgBouncer, puerto 6543): lo usa Prisma Client en runtime.
-  // Para Supabase se recomienda ?pgbouncer=true&connection_limit=1 en DATABASE_URL.
+  // Conexión con pooler (Neon: host con "-pooler"). La usa Prisma Client en runtime.
   url       = env("DATABASE_URL")
-  // Conexión directa (puerto 5432): la usa el CLI de Prisma (migrate / db push)
-  // para no pasar por PgBouncer.
+  // Conexión directa: la usa el CLI de Prisma (migrate) para no pasar por el pooler.
   directUrl = env("DIRECT_URL")
 }
 
 // ============================================================
-// Enums (equivalentes a los tipos ENUM nativos de PostgreSQL)
+// Enums
 // ============================================================
 
-/// user_role
+/// Roles: el ciudadano reporta, el trabajador atiende lo asignado,
+/// el supervisor gestiona su área y el administrador gestiona todo.
 enum UserRole {
   citizen
+  worker
+  supervisor
   admin
+
+  @@map("user_role")
 }
 
-/// damage_type
-enum DamageType {
-  pothole
-  crack
-  flooding
-  sidewalk
-  signage
-  lighting
-  drainage
-  other
-}
-
-/// severity_level
+/// Severidad que indica el ciudadano al reportar.
 enum SeverityLevel {
   low
   medium
   high
   critical
+
+  @@map("severity_level")
+}
+
+/// Prioridad de atención que fija el supervisor o el administrador.
+enum ReportPriority {
+  low
+  normal
+  high
+  urgent
+
+  @@map("report_priority")
+}
+
+/// Cómo se obtuvo la ubicación del reporte.
+enum LocationSource {
+  gps
+  map_pin
+  manual
+
+  @@map("location_source")
+}
+
+/// Tipos de zona del municipio.
+enum ZoneType {
+  neighborhood // barrio
+  commune // comuna
+  township // corregimiento
+  rural_area // vereda
+
+  @@map("zone_type")
+}
+
+/// Momento del proceso al que pertenece una foto.
+enum ImageKind {
+  evidence // foto del ciudadano al reportar
+  progress // avance de la obra
+  resolution // daño ya reparado
+
+  @@map("image_kind")
+}
+
+/// Propósito de un token temporal de usuario.
+enum TokenType {
+  password_reset
+  email_verification
+
+  @@map("token_type")
+}
+
+enum NotificationType {
+  status_changed
+  report_assigned
+  new_comment
+  report_supported
+  system
+
+  @@map("notification_type")
 }
 
 // ============================================================
-// Modelos
+// Usuarios y organización
 // ============================================================
 
-/// Usuarios de la plataforma (ciudadanos y administradores)
+/// Áreas responsables de atender los reportes (vías, alumbrado, drenaje…).
+model Department {
+  id          Int      @id @default(autoincrement())
+  name        String   @unique @db.VarChar(100)
+  description String?  @db.Text
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  categories Category[]
+  members    User[]
+  reports    Report[]
+
+  @@map("departments")
+}
+
+/// Usuarios de la plataforma. Trabajadores y supervisores pertenecen a un área.
 model User {
-  id           Int       @id @default(autoincrement())
-  fullName     String    @map("full_name") @db.VarChar(150)
-  email        String    @unique @db.VarChar(150)
-  passwordHash String    @map("password_hash") @db.VarChar(255)
-  role         UserRole  @default(citizen)
-  phone        String?   @db.VarChar(20)
-  isActive     Boolean   @default(true) @map("is_active")
-  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt    DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  id              Int       @id @default(autoincrement())
+  fullName        String    @map("full_name") @db.VarChar(150)
+  email           String    @unique @db.VarChar(150)
+  passwordHash    String    @map("password_hash") @db.VarChar(255)
+  role            UserRole  @default(citizen)
+  phone           String?   @db.VarChar(20)
+  departmentId    Int?      @map("department_id")
+  isActive        Boolean   @default(true) @map("is_active")
+  emailVerifiedAt DateTime? @map("email_verified_at") @db.Timestamptz(6)
+  lastLoginAt     DateTime? @map("last_login_at") @db.Timestamptz(6)
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  reports Report[]
-  changes ReportHistory[] @relation("ChangedBy")
+  department Department? @relation(fields: [departmentId], references: [id], onDelete: SetNull)
 
+  reports             Report[]           @relation("ReportAuthor")
+  assignedReports     Report[]           @relation("ReportAssignee")
+  statusChanges       ReportHistory[]    @relation("ChangedBy")
+  assignmentsReceived ReportAssignment[] @relation("AssignmentAssignee")
+  assignmentsGiven    ReportAssignment[] @relation("AssignmentAssigner")
+  images              ReportImage[]
+  comments            ReportComment[]
+  supports            ReportSupport[]
+  notifications       Notification[]
+  tokens              UserToken[]
+
+  @@index([role])
+  @@index([departmentId])
   @@index([isActive])
   @@map("users")
 }
 
-/// Categorías de daños viales visibles para el ciudadano
+/// Tokens temporales (recuperar contraseña, verificar correo).
+/// Se guarda solo el hash del token, nunca el valor que se envía por correo.
+model UserToken {
+  id        Int       @id @default(autoincrement())
+  userId    Int       @map("user_id")
+  type      TokenType
+  tokenHash String    @unique @map("token_hash") @db.VarChar(255)
+  expiresAt DateTime  @map("expires_at") @db.Timestamptz(6)
+  usedAt    DateTime? @map("used_at") @db.Timestamptz(6)
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, type])
+  @@map("user_tokens")
+}
+
+// ============================================================
+// Catálogos
+// ============================================================
+
+/// Tipos de daño. `name` es la clave técnica que usa la API (pothole, crack…)
+/// y `department` es el área a la que se enruta cada reporte de esta categoría.
 model Category {
-  id          Int       @id @default(autoincrement())
-  name        String    @unique @db.VarChar(50)
-  description String?   @db.Text
-  icon        String?   @db.VarChar(50)
-  isActive    Boolean   @default(true) @map("is_active")
-  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt   DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  id           Int      @id @default(autoincrement())
+  name         String   @unique @db.VarChar(50)
+  label        String   @db.VarChar(80)
+  description  String?  @db.Text
+  icon         String?  @db.VarChar(50)
+  departmentId Int?     @map("department_id")
+  isActive     Boolean  @default(true) @map("is_active")
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  reports Report[]
+  department Department? @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+  reports    Report[]
 
+  @@index([departmentId])
   @@index([isActive])
   @@map("categories")
 }
 
-/// Flujo de estados de un reporte
+/// Flujo de estados de un reporte.
 model ReportStatus {
-  id          Int       @id @default(autoincrement())
-  name        String    @unique @db.VarChar(30)
-  label       String    @db.VarChar(80)
-  color       String    @default("#CCCCCC") @db.VarChar(20)
-  description String?   @db.Text
-  isActive    Boolean   @default(true) @map("is_active")
-  orderIndex  Int       @default(0) @map("order_index")
-  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt   DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  id          Int      @id @default(autoincrement())
+  name        String   @unique @db.VarChar(30)
+  label       String   @db.VarChar(80)
+  color       String   @default("#CCCCCC") @db.VarChar(20)
+  description String?  @db.Text
+  isActive    Boolean  @default(true) @map("is_active")
+  orderIndex  Int      @default(0) @map("order_index")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   reports        Report[]        @relation("CurrentStatus")
   previousStatus ReportHistory[] @relation("PreviousStatus")
@@ -108,48 +223,95 @@ model ReportStatus {
   @@map("report_statuses")
 }
 
-/// Reportes de daños viales realizados por ciudadanos.
-/// Geolocalización: latitude/longitude (Float) + índice GIST de expresión
-/// en la BD (ver docs/database_schema.sql). Para consultas espaciales usar
-/// prisma.$queryRaw con ST_DWithin, ST_Distance, ST_AsGeoJSON, etc.
-model Report {
-  id              Int           @id @default(autoincrement())
-  referenceCode   String        @unique @map("reference_code") @db.VarChar(20)
-  userId          Int           @map("user_id")
-  categoryId      Int           @map("category_id")
-  statusId        Int           @default(1) @map("status_id")
-  title           String        @db.VarChar(200)
-  description     String?       @db.Text
-  damageType      DamageType    @map("damage_type")
-  severityLevel   SeverityLevel @default(low) @map("severity_level")
-  latitude        Float
-  longitude       Float
-  locationAddress String?       @map("location_address") @db.VarChar(255)
-  imageUrl        String?       @map("image_url") @db.VarChar(255)
-  createdAt       DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt       DateTime      @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+/// Barrios, comunas, corregimientos y veredas de Apartadó.
+/// Vacía al inicio: se llenará cuando se tenga la lista oficial.
+model Zone {
+  id        Int                                        @id @default(autoincrement())
+  name      String                                     @db.VarChar(120)
+  type      ZoneType
+  parentId  Int?                                       @map("parent_id")
+  /// Polígono del límite de la zona (opcional).
+  boundary  Unsupported("geography(MultiPolygon, 4326)")?
+  isActive  Boolean                                    @default(true) @map("is_active")
+  createdAt DateTime                                   @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime                                   @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  user     User         @relation(fields: [userId], references: [id], onDelete: Restrict)
-  category Category     @relation(fields: [categoryId], references: [id], onDelete: Restrict)
-  status   ReportStatus @relation("CurrentStatus", fields: [statusId], references: [id], onDelete: Restrict)
-  history  ReportHistory[]
+  parent   Zone?    @relation("ZoneHierarchy", fields: [parentId], references: [id], onDelete: SetNull)
+  children Zone[]   @relation("ZoneHierarchy")
+  reports  Report[]
+
+  @@unique([name, type])
+  @@index([parentId])
+  @@index([boundary], type: Gist)
+  @@map("zones")
+}
+
+// ============================================================
+// Reportes
+// ============================================================
+
+/// Reportes de daños viales.
+/// `location` es una columna PostGIS generada a partir de latitude/longitude
+/// (ver migración inicial): no se escribe desde Prisma; se consulta con
+/// prisma.$queryRaw (ST_DWithin, ST_Distance…) para buscar reportes cercanos.
+model Report {
+  id             Int            @id @default(autoincrement())
+  referenceCode  String         @unique @map("reference_code") @db.VarChar(20)
+  userId         Int            @map("user_id")
+  categoryId     Int            @map("category_id")
+  statusId       Int            @map("status_id")
+  departmentId   Int?           @map("department_id")
+  assignedToId   Int?           @map("assigned_to_id")
+  zoneId         Int?           @map("zone_id")
+  title          String         @db.VarChar(200)
+  description    String?        @db.Text
+  severityLevel  SeverityLevel  @default(low) @map("severity_level")
+  priority       ReportPriority @default(normal)
+  latitude       Float
+  longitude      Float
+  location       Unsupported("geography(Point, 4326)")?
+  locationSource LocationSource @default(manual) @map("location_source")
+  address        String?        @db.VarChar(255)
+  neighborhood   String?        @db.VarChar(120)
+  referencePoint String?        @map("reference_point") @db.VarChar(255)
+  resolvedAt     DateTime?      @map("resolved_at") @db.Timestamptz(6)
+  createdAt      DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime       @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  user       User         @relation("ReportAuthor", fields: [userId], references: [id], onDelete: Restrict)
+  category   Category     @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  status     ReportStatus @relation("CurrentStatus", fields: [statusId], references: [id], onDelete: Restrict)
+  department Department?  @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+  assignedTo User?        @relation("ReportAssignee", fields: [assignedToId], references: [id], onDelete: SetNull)
+  zone       Zone?        @relation(fields: [zoneId], references: [id], onDelete: SetNull)
+
+  history       ReportHistory[]
+  assignments   ReportAssignment[]
+  images        ReportImage[]
+  comments      ReportComment[]
+  supports      ReportSupport[]
+  notifications Notification[]
 
   @@index([statusId])
   @@index([categoryId])
   @@index([userId])
+  @@index([departmentId, statusId])
+  @@index([assignedToId, statusId])
+  @@index([zoneId])
   @@index([createdAt(sort: Desc)])
+  @@index([location], type: Gist)
   @@map("reports")
 }
 
-/// Historial de cambios de estado de cada reporte
+/// Historial de cambios de estado de cada reporte.
 model ReportHistory {
-  id               Int       @id @default(autoincrement())
-  reportId         Int       @map("report_id")
-  previousStatusId Int?      @map("previous_status_id")
-  newStatusId      Int       @map("new_status_id")
-  changedByUserId  Int       @map("changed_by_user_id")
-  comment          String?   @db.Text
-  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  id               Int      @id @default(autoincrement())
+  reportId         Int      @map("report_id")
+  previousStatusId Int?     @map("previous_status_id")
+  newStatusId      Int      @map("new_status_id")
+  changedByUserId  Int      @map("changed_by_user_id")
+  comment          String?  @db.Text
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
 
   report    Report        @relation(fields: [reportId], references: [id], onDelete: Cascade)
   previous  ReportStatus? @relation("PreviousStatus", fields: [previousStatusId], references: [id])
@@ -160,4 +322,96 @@ model ReportHistory {
   @@index([changedByUserId])
   @@index([newStatusId])
   @@map("report_history")
+}
+
+/// Historial de asignaciones: quién asignó el reporte, a quién y hasta cuándo.
+/// La asignación vigente es la que tiene `unassignedAt` vacío
+/// (y se refleja en reports.assigned_to_id).
+model ReportAssignment {
+  id           Int       @id @default(autoincrement())
+  reportId     Int       @map("report_id")
+  assignedToId Int       @map("assigned_to_id")
+  assignedById Int       @map("assigned_by_id")
+  dueDate      DateTime? @map("due_date") @db.Date
+  notes        String?   @db.Text
+  assignedAt   DateTime  @default(now()) @map("assigned_at") @db.Timestamptz(6)
+  unassignedAt DateTime? @map("unassigned_at") @db.Timestamptz(6)
+
+  report     Report @relation(fields: [reportId], references: [id], onDelete: Cascade)
+  assignedTo User   @relation("AssignmentAssignee", fields: [assignedToId], references: [id], onDelete: Restrict)
+  assignedBy User   @relation("AssignmentAssigner", fields: [assignedById], references: [id], onDelete: Restrict)
+
+  @@index([reportId, assignedAt(sort: Desc)])
+  @@index([assignedToId])
+  @@map("report_assignments")
+}
+
+/// Fotos de un reporte. El archivo vive en un servicio externo (Cloudinary);
+/// aquí solo se guarda la URL y la clave para poder borrarlo.
+model ReportImage {
+  id           Int       @id @default(autoincrement())
+  reportId     Int       @map("report_id")
+  uploadedById Int       @map("uploaded_by_id")
+  kind         ImageKind @default(evidence)
+  url          String    @db.VarChar(500)
+  storageKey   String?   @map("storage_key") @db.VarChar(255)
+  mimeType     String?   @map("mime_type") @db.VarChar(50)
+  sizeBytes    Int?      @map("size_bytes")
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  report     Report @relation(fields: [reportId], references: [id], onDelete: Cascade)
+  uploadedBy User   @relation(fields: [uploadedById], references: [id], onDelete: Restrict)
+
+  @@index([reportId, kind])
+  @@map("report_images")
+}
+
+/// Comentarios de un reporte. `isInternal = true`: nota entre supervisor y
+/// trabajador (el ciudadano no la ve).
+model ReportComment {
+  id         Int      @id @default(autoincrement())
+  reportId   Int      @map("report_id")
+  userId     Int      @map("user_id")
+  body       String   @db.Text
+  isInternal Boolean  @default(false) @map("is_internal")
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt  DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  report Report @relation(fields: [reportId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@index([reportId, createdAt])
+  @@map("report_comments")
+}
+
+/// "A mí también me afecta": un usuario apoya un reporte una sola vez.
+model ReportSupport {
+  reportId  Int      @map("report_id")
+  userId    Int      @map("user_id")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  report Report @relation(fields: [reportId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([reportId, userId])
+  @@index([userId])
+  @@map("report_supports")
+}
+
+/// Avisos dentro de la plataforma (cambio de estado, asignación…).
+model Notification {
+  id        Int              @id @default(autoincrement())
+  userId    Int              @map("user_id")
+  reportId  Int?             @map("report_id")
+  type      NotificationType
+  title     String           @db.VarChar(150)
+  message   String           @db.Text
+  readAt    DateTime?        @map("read_at") @db.Timestamptz(6)
+  createdAt DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  user   User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  report Report? @relation(fields: [reportId], references: [id], onDelete: Cascade)
+
+  @@index([userId, readAt])
+  @@map("notifications")
 }

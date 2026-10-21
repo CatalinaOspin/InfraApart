@@ -11,9 +11,9 @@ InfraApart permite a los ciudadanos reportar daños en la infraestructura vial (
 - 🗺️ **Reporte geolocalizado** — Los ciudadanos pueden marcar la ubicación exacta del daño en un mapa interactivo.
 - 📸 **Evidencia fotográfica** — Adjuntar fotos del daño reportado.
 - 📊 **Dashboard administrativo** — Panel de control para visualizar estadísticas, métricas y tendencias de daños viales.
-- 🔄 **Seguimiento de estados** — Cada reporte pasa por un ciclo: Pendiente → En revisión → En proceso → Resuelto.
+- 🔄 **Seguimiento de estados** — Cada reporte pasa por un ciclo: Recibido → En revisión → En proceso → Resuelto.
 - 🗂️ **Categorías de daño** — Clasificación por tipo: baches, grietas, inundaciones, señalización, alumbrado, etc.
-- 👥 **Gestión de usuarios** — Autenticación y roles (ciudadano, administrador).
+- 👥 **Gestión de usuarios** — Autenticación y roles (ciudadano, trabajador, supervisor de área, administrador).
 - 📈 **Estadísticas y reportes** — Gráficas de daños por zona, categoría y temporalidad.
 
 ## Arquitectura
@@ -21,10 +21,8 @@ InfraApart permite a los ciudadanos reportar daños en la infraestructura vial (
 ```
 InfraApart/
 ├── backend/          # API REST — Node.js + Express + TypeScript
-│   └── prisma/       # Schema y migraciones de Prisma ORM
+│   └── prisma/       # schema.prisma + migrations/ (estructura de la BD)
 ├── frontend/         # Aplicación Web — React + Vite + TypeScript
-├── docs/             # Documentación del proyecto
-│   └── database_schema.sql
 ├── docker-compose.yml  # PostgreSQL + PostGIS (base de datos local)
 └── README.md
 ```
@@ -35,7 +33,7 @@ InfraApart/
 - **Runtime:** Node.js
 - **Framework:** Express.js
 - **Lenguaje:** TypeScript
-- **Base de datos:** PostgreSQL + PostGIS (geolocalización)
+- **Base de datos:** PostgreSQL + PostGIS (geolocalización) — Neon en la nube
 - **ORM:** Prisma ORM v6 (`prisma` + `@prisma/client`)
 - **Base de datos local:** Docker Compose (`postgis/postgis:15-3.3`)
 - **Autenticación:** JWT (JSON Web Tokens)
@@ -51,7 +49,7 @@ InfraApart/
 
 - [Node.js](https://nodejs.org/) v18+
 - [npm](https://www.npmjs.com/) v9+ o [yarn](https://yarnpkg.com/)
-- [Docker](https://www.docker.com/products/docker-desktop/) (para la base de datos PostgreSQL + PostGIS)
+- Una base PostgreSQL + PostGIS: [Neon](https://neon.tech) (nube) o [Docker](https://www.docker.com/products/docker-desktop/) (local)
 - Git
 
 ## Inicio Rápido
@@ -85,178 +83,129 @@ npm install
 npm run dev               # App en http://localhost:5173
 ```
 
-### 4. Base de Datos (PostgreSQL + PostGIS con Docker)
+### 4. Base de datos (PostgreSQL + PostGIS)
 
-```bash
-# Desde la raíz del proyecto (primera vez: descarga la imagen)
-docker compose up -d
+La estructura de la base de datos se maneja con **migraciones de Prisma**:
 
-# Verificar que el contenedor está saludable
-docker compose ps
+- `backend/prisma/schema.prisma` → modelo de datos (fuente de verdad).
+- `backend/prisma/migrations/` → SQL versionado que crea y actualiza la BD.
+  La migración inicial incluye además PostGIS, la columna geográfica
+  `reports.location`, validaciones (CHECK), triggers de `updated_at` y los
+  datos iniciales (áreas, categorías y estados).
 
-# Al primer arranque, el esquema (docs/database_schema.sql) se ejecuta
-# automáticamente: crea tablas, índices GIST, datos iniciales y triggers.
-```
+#### Opción A: Neon (nube)
 
-> 💾 **Cambios de esquema:** el script del init solo corre sobre un volumen
-> **nuevo**. Si ya inicializaste la BD con una versión anterior del esquema
-> (e.g. el modelo de la Fase 2), recrea el volumen para aplicar el modelo de
-> la Fase 3:
->
-> ```bash
-> docker compose down -v && docker compose up -d
-> ```
-
-**Credenciales locales** (definidas en `docker-compose.yml`):
-
-| Variable            | Valor                 |
-| ------------------- | --------------------- |
-| Base de datos       | `infraapart_db`       |
-| Usuario             | `infraapart_user`     |
-| Contraseña          | `infraapart_password` |
-| Puerto              | `5432`                |
-| PostGIS             | `3.3` (PostgreSQL 15) |
-
-#### Base de datos en la nube (Supabase) — alternativa a Docker
-
-Con Prisma se usan **dos URLs** (`backend/.env`, ver plantilla en
-`backend/.env.example`):
-
-| Variable       | Puerto | Uso                                                        |
-| -------------- | ------ | ---------------------------------------------------------- |
-| `DATABASE_URL` | 6543   | **Transaction Pooler (PgBouncer)** → Prisma Client en runtime. Incluye `?pgbouncer=true&connection_limit=1`. |
-| `DIRECT_URL`   | 5432   | **Conexión directa** → CLI de Prisma (`db push` / `migrate`). |
-
-> 🔐 `.env` está en `.gitignore` y **nunca** se commitea. `.env.example` es
-> solo plantilla (sin credenciales reales). Si una clave se filtró a git,
-> rótala en Supabase (Project Settings → Database → Reset database password).
+1. Crea un proyecto en [Neon](https://neon.tech) y copia dos cadenas de
+   conexión desde **Connect**:
+   - **Con pooler** (host con `-pooler`) → `DATABASE_URL`
+   - **Directa** (host sin `-pooler`) → `DIRECT_URL`
+2. Pégalas en `backend/.env` (plantilla: `backend/.env.example`).
+3. Crea las tablas:
 
 ```bash
 cd backend
-cp .env.example .env          # pega las cadenas REALES desde el dashboard
-npm run prisma:push           # crea tablas y enums en la nube
-npm run prisma:generate       # regenera el cliente tipado
-npm run prisma:postgis        # PostGIS: search_path, índice GIST, triggers, seeds
-npm run db:test               # handshake + consultas reales (vía pooler)
+npm run prisma:deploy     # aplica las migraciones pendientes
+npm run db:test           # verifica conexión, categorías y estados
 ```
 
-> ⚠️ `prisma db push` **no** crea la extensión PostGIS, el índice GIST de
-> búsqueda espacial, los triggers de `updated_at` ni los seeds. Ejecuta
-> `npm run prisma:postgis` (aplica `backend/prisma/postgis-supabase.sql`, que
-> es idempotente). Equivalente manual: Supabase → SQL Editor, o
-> `psql "$DIRECT_URL" -f prisma/postgis-supabase.sql`.
->
-> ℹ️ Particularidades de Supabase que asume ese suplemento: PostGIS se instala
-> en el schema `postgis` (no `public`), por lo que el script añade ese schema
-> al `search_path` del rol (`ALTER ROLE postgres SET search_path ...`) para
-> que `ST_MakePoint`, `ST_SetSRID` y el tipo `geography` resuelvan sin
-> calificar. Además, `updated_at` lleva `@default(now()) @updatedAt` en el
-> schema Prisma para que los inserts por SQL crudo no violen NOT NULL.
+#### Opción B: Docker (local)
 
-### 5. Sincronizar el esquema con Prisma
+```bash
+docker compose up -d      # PostgreSQL 15 + PostGIS 3.3 (base vacía)
+cd backend
+npm run prisma:deploy     # crea las tablas en la base local
+```
 
-La fuente de verdad de la BD es `docs/database_schema.sql` (ya aplicado por
-Docker). Para que el schema de Prisma refleje la BD real:
+Credenciales locales (`docker-compose.yml`): base `infraapart_db`, usuario
+`infraapart_user`, contraseña `infraapart_password`, puerto `5432`.
+
+> 🔐 `.env` está en `.gitignore` y **nunca** se commitea.
+
+#### Primer administrador
+
+Después de crear la BD, regístrate desde la aplicación y cambia tu rol en el
+editor SQL de Neon (o en `psql`):
+
+```sql
+UPDATE users SET role = 'admin' WHERE email = 'tu-correo@ejemplo.com';
+```
+
+### 5. Cambiar el modelo de datos
+
+1. Edita `backend/prisma/schema.prisma`.
+2. Genera la migración (requiere una BD de desarrollo, por ejemplo la local
+   de Docker o una rama de Neon):
 
 ```bash
 cd backend
-npx prisma db pull        # Introspecta la BD y actualiza prisma/schema.prisma
-npx prisma generate       # Regenera el cliente tipado
+npm run prisma:migrate -- --name descripcion_del_cambio
 ```
 
-> ⚠️ `prisma db push` funciona en entornos de desarrollo, pero puede
-> simplificar/omitir particularidades del SQL (CHECKs, `geometry` de PostGIS
-> e índices GIST). Se recomienda **`db pull`** para mantener `schema.prisma`
-> alineado con la base de datos creada por el script.
+3. Haz commit de la carpeta `prisma/migrations/` junto con el schema.
+4. Los demás (y producción) aplican el cambio con `npm run prisma:deploy`.
+
+> ⚠️ No uses `prisma db push` sobre Neon/producción: no deja historial y
+> no aplica el SQL adicional de las migraciones.
 
 ### 6. Comandos útiles
 
 ```bash
-docker compose up -d                          # Levantar la BD
-docker compose down                           # Detener la BD (conserva datos)
-docker compose down -v                        # Detener y borrar datos
-docker compose logs -f db                     # Ver logs del contenedor
-docker exec -it infraapart_db psql -U infraapart_user -d infraapart_db  # Consola psql
-
 # Prisma (desde backend/)
-npm run prisma:generate    # prisma generate
-npm run prisma:validate    # prisma validate
-npm run prisma:pull        # prisma db pull
-npm run prisma:push        # prisma db push (dev)
-npm run prisma:studio      # prisma studio (nav visual)
-npm run db:test            # Prueba de conexión E2E (handshake + consultas reales)
+npm run prisma:deploy      # aplica migraciones pendientes (Neon, local, Render)
+npm run prisma:migrate     # crea una migración nueva a partir del schema (desarrollo)
+npm run prisma:status      # muestra qué migraciones están aplicadas
+npm run prisma:generate    # regenera el cliente tipado
+npm run prisma:validate    # valida schema.prisma
+npm run prisma:studio      # explorador visual de datos
+npm run db:test            # prueba de conexión E2E
 
-# Health check (con la BD levantada)
+# Docker (desde la raíz)
+docker compose up -d       # levantar la BD local
+docker compose down        # detener (conserva datos)
+docker compose down -v     # detener y borrar datos
+
+# Health check (con la BD disponible)
 curl http://localhost:3001/api/health
-#   → 200 {"status":"ok","db":"connected",...}
-#   → 503 {"status":"degraded","db":"disconnected",...} si la BD no responde
 ```
 
-## PostGIS con Prisma (geolocalización)
+## Modelo de datos
 
-Modelo geográfico (definido en `docs/database_schema.sql`):
+13 tablas. Roles: `citizen` (ciudadano), `worker` (trabajador),
+`supervisor` (supervisor de área) y `admin` (administrador).
 
-- `reports.latitude` y `reports.longitude` son columnas `DOUBLE PRECISION`
-  (mapeadas como `Float` en Prisma): la app las lee/escribe con el cliente
-  normal, sin SQL crudo.
-- PostGIS queda disponible vía un **índice GIST sobre expresión**:
+| Tabla                | Para qué sirve |
+| -------------------- | -------------- |
+| `departments`        | Áreas responsables (Infraestructura vial, Alumbrado público, Drenaje…). |
+| `users`              | Usuarios. Trabajadores y supervisores pertenecen a un área (`department_id`). |
+| `user_tokens`        | Tokens temporales (hash) para recuperar contraseña y verificar correo. |
+| `categories`         | Tipos de daño (`name` = clave de la API: `pothole`, `crack`…) y el área a la que se envían. |
+| `report_statuses`    | Estados: Recibido → En revisión → En proceso → Resuelto / Rechazado. |
+| `zones`              | Barrios, comunas, corregimientos y veredas (vacía hasta tener la lista oficial). |
+| `reports`            | Reportes: ubicación (lat/lng + `location` PostGIS), dirección, barrio, punto de referencia, severidad, prioridad, área, trabajador asignado. |
+| `report_history`     | Cambios de estado de cada reporte. |
+| `report_assignments` | Historial de asignaciones (quién asignó, a quién, fecha límite). |
+| `report_images`      | Fotos del reporte: `evidence` (ciudadano), `progress` y `resolution` (trabajador). Solo URL; el archivo vive en un servicio externo. |
+| `report_comments`    | Comentarios; `is_internal = true` para notas entre supervisor y trabajador. |
+| `report_supports`    | "A mí también me afecta": un apoyo por usuario y reporte. |
+| `notifications`      | Avisos dentro de la plataforma (cambio de estado, asignación…). |
 
-  ```sql
-  CREATE INDEX idx_reports_location
-    ON reports USING GIST (ST_SetSRID(ST_MakePoint(longitude, latitude), 4326));
-  ```
+### Consultas geográficas (PostGIS)
 
-  Así `ST_DWithin` y `ST_Distance` usan el índice espacial **sin** necesidad
-  de una columna `GEOMETRY`/`Unsupported(...)`, que Prisma no gestiona.
-
-Patrón de consultas espaciales (raw SQL con `prisma.$queryRaw`):
+`reports.location` es una columna `geography(Point, 4326)` **generada** a
+partir de `latitude`/`longitude` y con índice GIST. La aplicación solo escribe
+latitud y longitud; para buscar por distancia se usa `prisma.$queryRaw`:
 
 ```ts
-import { prisma } from '../config/database';
-
-// 📍 Crear reporte (lat/lng se escriben como columnas normales)
-const report = await prisma.report.create({
-  data: {
-    title: 'Bache en la Av. Primera',
-    latitude: 7.883,
-    longitude: -76.633,
-    // categoryId, statusId, damageType, severityLevel, ...
-  },
-});
-
-// 📍 Búsqueda por radio (usa el índice GIST de docs/database_schema.sql)
+// Reportes abiertos de la misma categoría a menos de 50 m (detección de duplicados)
 const cercanos = await prisma.$queryRaw`
-  SELECT id, title, latitude, longitude,
-         ST_Distance(
-           ST_SetSRID(ST_MakePoint(longitude, latitude), 4326),
-           ST_SetSRID(ST_MakePoint(${lng}, ${lat}), 4326)
-         ) AS dist_m
+  SELECT id, reference_code,
+         ST_Distance(location, ST_SetSRID(ST_MakePoint(${lng}, ${lat}), 4326)::geography) AS distancia_m
   FROM reports
-  WHERE ST_DWithin(
-          ST_SetSRID(ST_MakePoint(longitude, latitude), 4326),
-          ST_SetSRID(ST_MakePoint(${lng}, ${lat}), 4326),
-          ${radioM}
-        )
-  ORDER BY dist_m
+  WHERE category_id = ${categoryId}
+    AND ST_DWithin(location, ST_SetSRID(ST_MakePoint(${lng}, ${lat}), 4326)::geography, 50)
+  ORDER BY distancia_m
 `;
 ```
-
-### Modelo de datos (5 tablas + enums)
-
-Fuente de verdad: `docs/database_schema.sql` → `schema.prisma`.
-
-| Tabla            | Campos destacados                                      |
-| ---------------- | ------------------------------------------------------ |
-| `users`          | `full_name`, `email` (único), `password_hash`, `role` (`user_role`), `phone`, `is_active` |
-| `categories`     | `name` (único), `description`, `icon`, `is_active`     |
-| `report_statuses`| `name` (único), `label`, `color`, `description`, `is_active`, `order_index` |
-| `reports`        | `reference_code` (único), `title`, `damage_type` (`damage_type`), `severity_level` (`severity_level`), `latitude`/`longitude`, `location_address`, `image_url` |
-| `report_history` | `previous_status_id`?, `new_status_id`, `changed_by_user_id`, `comment` |
-
-Enums nativos de PostgreSQL: `user_role` (`citizen|admin`), `damage_type`
-(`pothole|crack|flooding|sidewalk|signage|lighting|drainage|other`) y
-`severity_level` (`low|medium|high|critical`). Prisma los introspecta como
-enums propios (`UserRole`, `DamageType`, `SeverityLevel`).
 
 ## Estructura del Proyecto
 

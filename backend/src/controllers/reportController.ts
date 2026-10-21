@@ -41,6 +41,14 @@ const REPORT_INCLUDE = {
   user: { select: { id: true, fullName: true, email: true } },
   category: { select: { id: true, name: true } },
   status: { select: { id: true, name: true, label: true, color: true } },
+  // Foto principal del ciudadano (la API sigue exponiendo un único image_url).
+  images: {
+    where: { kind: 'evidence' },
+    orderBy: { createdAt: 'asc' },
+    take: 1,
+    select: { url: true },
+  },
+  _count: { select: { supports: true } },
 } as const satisfies Prisma.ReportInclude;
 
 type ReportWithRelations = Prisma.ReportGetPayload<{ include: typeof REPORT_INCLUDE }>;
@@ -83,12 +91,18 @@ function toReportDto(report: ReportWithRelations) {
     reference_code: report.referenceCode,
     title: report.title,
     description: report.description,
-    damage_type: report.damageType,
+    // El tipo de daño es el nombre de la categoría (pothole, crack…).
+    damage_type: report.category.name,
     severity_level: report.severityLevel,
+    priority: report.priority,
     latitude: report.latitude,
     longitude: report.longitude,
-    location_address: report.locationAddress,
-    image_url: report.imageUrl,
+    location_source: report.locationSource,
+    location_address: report.address,
+    neighborhood: report.neighborhood,
+    reference_point: report.referencePoint,
+    image_url: report.images[0]?.url ?? null,
+    supports_count: report._count.supports,
     status: report.status,
     category: report.category,
     user: { id: report.user.id, full_name: report.user.fullName },
@@ -129,8 +143,8 @@ export const createReport = async (req: Request, res: Response) => {
 
     const { damage_type, ...fields } = result.data;
 
-    // La categoría se deriva del tipo de daño: las categorías sembradas usan
-    // exactamente los mismos nombres que el enum damage_type.
+    // El tipo de daño es el nombre de la categoría; la categoría define además
+    // el área (departamento) a la que se enruta el reporte.
     const category = await prisma.category.findUnique({ where: { name: damage_type } });
     if (!category) {
       return sendError(res, `No existe la categoría para el tipo de daño '${damage_type}'`, 400);
@@ -150,15 +164,20 @@ export const createReport = async (req: Request, res: Response) => {
             referenceCode: generateReferenceCode(),
             userId: req.user.id,
             categoryId: category.id,
+            departmentId: category.departmentId,
             statusId: pendingStatus.id,
             title: fields.title,
             description: fields.description ?? null,
-            damageType: damage_type,
             severityLevel: fields.severity_level,
             latitude: fields.latitude,
             longitude: fields.longitude,
-            locationAddress: fields.location_address ?? null,
-            imageUrl: fields.image_url ?? null,
+            locationSource: fields.location_source ?? 'manual',
+            address: fields.location_address ?? null,
+            neighborhood: fields.neighborhood ?? null,
+            referencePoint: fields.reference_point ?? null,
+            images: fields.image_url
+              ? { create: { kind: 'evidence', url: fields.image_url, uploadedById: req.user.id } }
+              : undefined,
           },
           include: REPORT_INCLUDE,
         });
@@ -304,15 +323,27 @@ export const updateReport = async (req: Request, res: Response) => {
         return sendError(res, `No existe la categoría para el tipo de daño '${damage_type}'`, 400);
       }
       data.categoryId = category.id;
-      data.damageType = damage_type;
+      // Al cambiar el tipo de daño, el reporte pasa al área de la nueva categoría.
+      data.departmentId = category.departmentId;
     }
     if (fields.title !== undefined) data.title = fields.title;
     if (fields.description !== undefined) data.description = fields.description ?? null;
     if (fields.severity_level !== undefined) data.severityLevel = fields.severity_level;
     if (fields.latitude !== undefined) data.latitude = fields.latitude;
     if (fields.longitude !== undefined) data.longitude = fields.longitude;
-    if (fields.location_address !== undefined) data.locationAddress = fields.location_address ?? null;
-    if (fields.image_url !== undefined) data.imageUrl = fields.image_url ?? null;
+    if (fields.location_source !== undefined) data.locationSource = fields.location_source;
+    if (fields.location_address !== undefined) data.address = fields.location_address ?? null;
+    if (fields.neighborhood !== undefined) data.neighborhood = fields.neighborhood ?? null;
+    if (fields.reference_point !== undefined) data.referencePoint = fields.reference_point ?? null;
+    if (fields.image_url !== undefined) {
+      // image_url reemplaza la foto principal del ciudadano (null la elimina).
+      data.images = {
+        deleteMany: { kind: 'evidence' },
+        ...(fields.image_url
+          ? { create: { kind: 'evidence', url: fields.image_url, uploadedById: req.user.id } }
+          : {}),
+      };
+    }
 
     const updated = await prisma.report.update({
       where: { id },
@@ -356,7 +387,11 @@ export const updateReportStatus = async (req: Request, res: Response) => {
 
       const updated = await tx.report.update({
         where: { id },
-        data: { statusId: nextStatus.id },
+        data: {
+          statusId: nextStatus.id,
+          // Fecha de resolución: se fija al pasar a "resolved" y se limpia si se reabre.
+          ...(changed ? { resolvedAt: nextStatus.name === 'resolved' ? new Date() : null } : {}),
+        },
         include: REPORT_INCLUDE,
       });
 

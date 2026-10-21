@@ -5,6 +5,8 @@
 /** Roles de usuario en el sistema */
 export enum UserRole {
   CITIZEN = 'citizen',
+  WORKER = 'worker',
+  SUPERVISOR = 'supervisor',
   ADMIN = 'admin',
 }
 

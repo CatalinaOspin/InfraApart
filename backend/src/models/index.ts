@@ -3,7 +3,7 @@
  *
  * NOTA: desde la Fase 2 la fuente de verdad de los tipos es el cliente
  * generado por `@prisma/client` (npx prisma generate). Estas interfaces se
- * mantienen para capas de DTO/validación y reflejan docs/database_schema.sql.
+ * mantienen para capas de DTO/validación y reflejan prisma/schema.prisma.
  */
 import type { DamageType, SeverityLevel, UserRole } from '../types';
 

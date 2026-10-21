@@ -6,7 +6,7 @@
  *
  * Verifica el handshake con PostgreSQL (PostGIS) y ejecuta consultas
  * ligeras contra datos reales (categorías y estados sembrados por
- * docs/database_schema.sql).
+ * la migración inicial en prisma/migrations/).
  */
 import prisma from '../config/database';
 

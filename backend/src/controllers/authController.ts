@@ -123,6 +123,8 @@ export const login = async (req: Request, res: Response) => {
       return sendError(res, 'La cuenta está desactivada', 401);
     }
 
+    await prisma.user.update({ where: { id: user.id }, data: { lastLoginAt: new Date() } });
+
     const token = jwt.sign(
       { id: user.id, role: user.role },
       config.jwt.secret,
